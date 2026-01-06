@@ -13,11 +13,7 @@ Günümüzde bilgisayar başında uzun süre hareketsiz kalmak (sedanter yaşam)
 * **Omuz ve Sırt Egzersizi:** Oyuncunun kollarını 90 derece ve üzerinde tutması (T-Pose), Deltoid (omuz) ve Trapezius (sırt) kaslarının aktif çalışmasını sağlar.
 * **Postür (Duruş) Düzeltme:** Uçağı kontrol etmek için dik durmak gerektiğinden, oyuncunun omurga duruşunu düzeltmesine yardımcı olur.
 * **Aktif Mola:** Uzun çalışma saatleri arasında eğlenceli ve hareketli bir mola vererek kan dolaşımını hızlandırır.
-
-## 🌟 Sürüm v1.0 Yenilikleri (Gold Master)
-Projenin final sürümüyle eklenen profesyonel özellikler:
-
-* **AR (Artırılmış Gerçeklik) Göstergeler:** Oyuncunun omuzları üzerinde, kolların açısını anlık gösteren dijital veriler.
+* **AR Göstergeler:** Oyuncunun omuzları üzerinde, kolların açısını anlık gösteren dijital veriler.
 * **Kalıcı Rekor Sistemi:** Oyun kapatılsa bile en yüksek skor (`rekor.txt`) hafızada tutulur.
 * **Optimize Edilmiş Çizim:** Görüntü kirliliğini önlemek için sadece üst gövde (yeşil çizgilerle) çizilir.
 * **Gelişmiş Arayüz:** Başlangıç menüsü, görsel uyarılar ve detaylı "Uçuş Raporu" ekranı.
