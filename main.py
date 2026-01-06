@@ -4,6 +4,7 @@ import numpy as np
 import pygame
 import random
 import sys
+import os # Dosya işlemleri için gerekli
 
 # --- 1. AYARLAR VE SABİTLER ---
 EKRAN_GENISLIK = 400
@@ -13,7 +14,16 @@ KUS_HIZI = 8
 T_POSE_SURESI = 20
 KRITIK_SURE = 90  # 3 Saniye (30 FPS x 3)
 skor = 0
-en_yuksek_skor = 0
+
+# --- YENİ EKLENEN: REKOR SİSTEMİ BAŞLANGIÇ ---
+# Oyun açılırken rekor dosyasını okumaya çalışır
+try:
+    with open("rekor.txt", "r") as dosya:
+        en_yuksek_skor = int(dosya.read())
+except:
+    # Dosya yoksa veya hata verirse rekor 0 olsun
+    en_yuksek_skor = 0
+# --- REKOR SİSTEMİ BİTİŞ ---
 
 # Renkler
 BEYAZ = (255, 255, 255)
@@ -32,6 +42,14 @@ def calculate_angle(a, b, c):
     angle = np.abs(radians*180.0/np.pi)
     if angle > 180.0: angle = 360 - angle
     return angle
+
+def rekor_kaydet(yeni_skor):
+    global en_yuksek_skor
+    if yeni_skor > en_yuksek_skor:
+        en_yuksek_skor = yeni_skor
+        # Yeni rekoru dosyaya yaz
+        with open("rekor.txt", "w") as dosya:
+            dosya.write(str(en_yuksek_skor))
 
 # --- 3. BAŞLATMA ---
 pygame.init()
@@ -75,11 +93,10 @@ spawn_timer = 0
 skor = 0
 
 # --- ARKA PLAN HAREKET DEĞİŞKENİ ---
-# Arka planın dikey konumu (Y ekseni)
 arkaplan_y = 0 
 
 # Durumlar
-oyun_durumu = "BEKLEME" 
+oyun_durumu = "MENU" 
 t_pose_sayaci = 0
 uyari_sayaci = 0        
 dusuk_kol_sayaci = 0  
@@ -110,6 +127,8 @@ while True:
     
     if results.pose_landmarks:
         landmarks = results.pose_landmarks.landmark
+        
+        # Koordinatları al
         sol_omuz = [landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].x, landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].y]
         sol_dirsek = [landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value].x, landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value].y]
         sol_kalca = [landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].x, landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].y]
@@ -117,9 +136,62 @@ while True:
         sag_dirsek = [landmarks[mp_pose.PoseLandmark.RIGHT_ELBOW.value].x, landmarks[mp_pose.PoseLandmark.RIGHT_ELBOW.value].y]
         sag_kalca = [landmarks[mp_pose.PoseLandmark.RIGHT_HIP.value].x, landmarks[mp_pose.PoseLandmark.RIGHT_HIP.value].y]
         
+        # Açıları hesapla
         sol_aci = calculate_angle(sol_kalca, sol_omuz, sol_dirsek)
         sag_aci = calculate_angle(sag_kalca, sag_omuz, sag_dirsek)
-        mp_drawing.draw_landmarks(frame, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
+        
+        # --- ÖZEL İSKELET ÇİZİMİ (Sadece Üst Vücut) ---
+        
+        # Ekran boyutlarını al
+        h, w, _ = frame.shape
+        
+        # Koordinatları piksele çeviren yardımcı kısa fonksiyon
+        get_px = lambda lm: (int(lm.x * w), int(lm.y * h))
+
+        # Gerekli noktaları al
+        lm = results.pose_landmarks.landmark
+        p_sol_omuz = get_px(lm[mp_pose.PoseLandmark.LEFT_SHOULDER.value])
+        p_sol_dirsek = get_px(lm[mp_pose.PoseLandmark.LEFT_ELBOW.value])
+        p_sol_bilek = get_px(lm[mp_pose.PoseLandmark.LEFT_WRIST.value])
+        p_sol_kalca = get_px(lm[mp_pose.PoseLandmark.LEFT_HIP.value])
+        
+        p_sag_omuz = get_px(lm[mp_pose.PoseLandmark.RIGHT_SHOULDER.value])
+        p_sag_dirsek = get_px(lm[mp_pose.PoseLandmark.RIGHT_ELBOW.value])
+        p_sag_bilek = get_px(lm[mp_pose.PoseLandmark.RIGHT_WRIST.value])
+        p_sag_kalca = get_px(lm[mp_pose.PoseLandmark.RIGHT_HIP.value])
+
+        # ÇİZGİLERİ ÇİZ (Kalınlık: 3, Renk: Yeşil)
+        cv2.line(frame, p_sol_omuz, p_sol_dirsek, (0, 255, 0), 3)
+        cv2.line(frame, p_sol_dirsek, p_sol_bilek, (0, 255, 0), 3)
+        cv2.line(frame, p_sag_omuz, p_sag_dirsek, (0, 255, 0), 3)
+        cv2.line(frame, p_sag_dirsek, p_sag_bilek, (0, 255, 0), 3)
+        cv2.line(frame, p_sol_omuz, p_sag_omuz, (0, 255, 0), 3) 
+        cv2.line(frame, p_sol_omuz, p_sol_kalca, (0, 255, 0), 3) 
+        cv2.line(frame, p_sag_omuz, p_sag_kalca, (0, 255, 0), 3) 
+        cv2.line(frame, p_sol_kalca, p_sag_kalca, (0, 255, 0), 3) 
+
+        # NOKTALARI KOY 
+        noktalar = [p_sol_omuz, p_sol_dirsek, p_sol_bilek, p_sol_kalca, 
+                   p_sag_omuz, p_sag_dirsek, p_sag_bilek, p_sag_kalca]
+        
+        for nokta in noktalar:
+            cv2.circle(frame, nokta, 5, (0, 0, 255), -1) 
+
+        # AÇILARI EKRANA YAZDIRMA
+        text_x_sol = int(sol_omuz[0] * w)
+        text_y_sol = int(sol_omuz[1] * h)
+        text_x_sag = int(sag_omuz[0] * w)
+        text_y_sag = int(sag_omuz[1] * h)
+
+        cv2.putText(frame, str(int(sol_aci)), (text_x_sol + 10, text_y_sol - 10), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 4, cv2.LINE_AA)
+        cv2.putText(frame, str(int(sol_aci)), (text_x_sol + 10, text_y_sol - 10), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
+
+        cv2.putText(frame, str(int(sag_aci)), (text_x_sag - 60, text_y_sag - 10), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 4, cv2.LINE_AA)
+        cv2.putText(frame, str(int(sag_aci)), (text_x_sag - 60, text_y_sag - 10), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
         
     # --- OYUN MANTIĞI ---
     
@@ -132,7 +204,7 @@ while True:
         if not ((70 < sol_aci < 120) and (70 < sag_aci < 120)):
             oyun_durumu = "BEKLEME"
         uyari_sayaci += 1
-        if uyari_sayaci > 60: 
+        if uyari_sayaci > 90: 
             oyun_durumu = "SAYAC"
             t_pose_sayaci = 0
 
@@ -153,10 +225,7 @@ while True:
         guncel_akis_hizi = int(KUS_HIZI * (1 + (skor // 10) * 0.2))
 
         # --- ARKA PLAN HAREKETİ ---
-        # Arka planı aşağı doğru kaydır (Kuşlardan biraz daha yavaş aksın, derinlik katar)
         arkaplan_y += guncel_akis_hizi // 2 
-        
-        # Eğer arka plan tamamen aşağı indiyse başa sar
         if arkaplan_y >= EKRAN_YUKSEKLIK:
             arkaplan_y = 0
 
@@ -165,9 +234,8 @@ while True:
             dusuk_kol_sayaci += 1
             if dusuk_kol_sayaci > KRITIK_SURE:
                 oyun_durumu = "BITTI"
-                bitis_sebebi = "UCAK CAKILDI!"
-                if skor > en_yuksek_skor:
-                    en_yuksek_skor = skor
+                bitis_sebebi = "UÇAK ÇAKILDI!"
+                rekor_kaydet(skor) # REKORU KAYDET
         else:
             dusuk_kol_sayaci = 0
             if sag_aci > 130: 
@@ -177,34 +245,96 @@ while True:
 
     # --- EKRAN ÇİZİMLERİ ---
     
-    # 1. ARKA PLAN ÇİZİMİ (SONSUZ DÖNGÜ)
     if resimler_yuklendi:
-        # Birinci kopyayı çiz
         oyun_ekrani.blit(arkaplan_resmi, (0, arkaplan_y))
-        # İkinci kopyayı (boşluk kalmasın diye) hemen üstüne çiz
         oyun_ekrani.blit(arkaplan_resmi, (0, arkaplan_y - EKRAN_YUKSEKLIK))
     else:
         oyun_ekrani.fill(MAVI)
 
-    # 2. DİĞER ÇİZİMLER
-    if oyun_durumu == "BEKLEME":
-        yazi = font_kucuk.render("Oyuna baslamak icin", True, SIYAH)
-        yazi2 = font_kucuk.render("iki kollari yana aciniz", True, SIYAH)
-        oyun_ekrani.blit(yazi, (EKRAN_GENISLIK//2 - yazi.get_width()//2, EKRAN_YUKSEKLIK//2 - 50))
-        oyun_ekrani.blit(yazi2, (EKRAN_GENISLIK//2 - yazi2.get_width()//2, EKRAN_YUKSEKLIK//2))
+    if oyun_durumu == "MENU":
+        baslik = font_buyuk.render("UÇUŞ SİMULATORÜ", True, SIYAH)
+        oyun_ekrani.blit(baslik, (EKRAN_GENISLIK//2 - baslik.get_width()//2, 150))
+
+        mouse_pos = pygame.mouse.get_pos()
+        click = pygame.mouse.get_pressed()
+        buton_rect = pygame.Rect(EKRAN_GENISLIK//2 - 100, 350, 200, 60)
+
+        if buton_rect.collidepoint(mouse_pos):
+            pygame.draw.rect(oyun_ekrani, (0, 200, 0), buton_rect) 
+            if click[0] == 1: 
+                oyun_durumu = "BEKLEME" 
+        else:
+            pygame.draw.rect(oyun_ekrani, YESIL, buton_rect) 
+
+        buton_yazi = font_orta.render("OYUNA BAŞLA", True, BEYAZ)
+        yazi_x = buton_rect.x + (buton_rect.width - buton_yazi.get_width()) // 2
+        yazi_y = buton_rect.y + (buton_rect.height - buton_yazi.get_height()) // 2
+        oyun_ekrani.blit(buton_yazi, (yazi_x, yazi_y))
+
+        # (REKOR GÖSTERGESİ)
+        rekor_str = f"En Yüksek Skor: {en_yuksek_skor}"
+        rekor_yazi = font_kucuk.render(rekor_str, True, KIRMIZI) 
+        
+        # Yazıyı ortala ve çiz
+        rekor_x = EKRAN_GENISLIK // 2 - rekor_yazi.get_width() // 2
+        oyun_ekrani.blit(rekor_yazi, (rekor_x, 430))
+
+
+    elif oyun_durumu == "BEKLEME":
+        kutu_genislik = 320
+        kutu_yukseklik = 180 
+        kutu_x = EKRAN_GENISLIK // 2 - kutu_genislik // 2
+        kutu_y = EKRAN_YUKSEKLIK // 2 - 100 
+        
+        uyari_kutusu = pygame.Surface((kutu_genislik, kutu_yukseklik))
+        uyari_kutusu.set_alpha(180) 
+        uyari_kutusu.fill(SIYAH)    
+        
+        oyun_ekrani.blit(uyari_kutusu, (kutu_x, kutu_y))
+        pygame.draw.rect(oyun_ekrani, BEYAZ, (kutu_x, kutu_y, kutu_genislik, kutu_yukseklik), 3)
+
+        baslik_yazi = font_orta.render("HAZIRLAN", True, YESIL) 
+        talimat1 = font_kucuk.render("Oyuna başlamak için", True, BEYAZ) 
+        talimat2 = font_kucuk.render("iki kolunuzu dümdüz olacak şekilde", True, BEYAZ)
+        talimat3 = font_kucuk.render("yanlara açınız (90°)", True, BEYAZ) 
+
+        baslik_x = kutu_x + (kutu_genislik - baslik_yazi.get_width()) // 2
+        oyun_ekrani.blit(baslik_yazi, (baslik_x, kutu_y + 20))
+        talimat1_x = kutu_x + (kutu_genislik - talimat1.get_width()) // 2
+        oyun_ekrani.blit(talimat1, (talimat1_x, kutu_y + 60))
+        talimat2_x = kutu_x + (kutu_genislik - talimat2.get_width()) // 2
+        oyun_ekrani.blit(talimat2, (talimat2_x, kutu_y + 90))
+        talimat3_x = kutu_x + (kutu_genislik - talimat3.get_width()) // 2
+        oyun_ekrani.blit(talimat3, (talimat3_x, kutu_y + 120)) 
 
     elif oyun_durumu == "UYARI":
-        if uyari_sayaci % 10 < 5: 
-            t1 = font_orta.render("UNUTMAYIN!", True, KIRMIZI)
-            t2 = font_kucuk.render("KOLLARINIZI INDIRIRSENIZ", True, KIRMIZI)
-            t3 = font_kucuk.render("UCAK DUSER!", True, KIRMIZI)
-            oyun_ekrani.blit(t1, (EKRAN_GENISLIK//2 - t1.get_width()//2, 200))
-            oyun_ekrani.blit(t2, (EKRAN_GENISLIK//2 - t2.get_width()//2, 250))
-            oyun_ekrani.blit(t3, (EKRAN_GENISLIK//2 - t3.get_width()//2, 280))
+        kutu_genislik = 340
+        kutu_yukseklik = 160
+        kutu_x = EKRAN_GENISLIK // 2 - kutu_genislik // 2
+        kutu_y = EKRAN_YUKSEKLIK // 2 - 100
+
+        uyari_kutusu = pygame.Surface((kutu_genislik, kutu_yukseklik))
+        uyari_kutusu.set_alpha(210)  
+        uyari_kutusu.fill((50, 0, 0)) 
+        oyun_ekrani.blit(uyari_kutusu, (kutu_x, kutu_y))
+
+        if uyari_sayaci % 55 < 40:
+            pygame.draw.rect(oyun_ekrani, KIRMIZI, (kutu_x, kutu_y, kutu_genislik, kutu_yukseklik), 4)
+            baslik = font_orta.render("! DİKKAT !", True, KIRMIZI)
+            t1 = font_kucuk.render("Kollarınızı indirirseniz", True, BEYAZ)
+            t2 = font_kucuk.render("dengenizi kaybedersiniz ve", True, BEYAZ)
+            t3 = font_kucuk.render("uçak düşer !", True, BEYAZ) 
+
+            oyun_ekrani.blit(baslik, (kutu_x + (kutu_genislik - baslik.get_width())//2, kutu_y + 20))
+            oyun_ekrani.blit(t1, (kutu_x + (kutu_genislik - t1.get_width())//2, kutu_y + 60))
+            oyun_ekrani.blit(t2, (kutu_x + (kutu_genislik - t2.get_width())//2, kutu_y + 90))
+            oyun_ekrani.blit(t3, (kutu_x + (kutu_genislik - t3.get_width())//2, kutu_y + 120))
+        else:
+            pygame.draw.rect(oyun_ekrani, (100, 0, 0), (kutu_x, kutu_y, kutu_genislik, kutu_yukseklik), 2)
 
     elif oyun_durumu == "SAYAC":
         kalan = T_POSE_SURESI - t_pose_sayaci
-        yazi = font_buyuk.render(f"HAZIRLAN...", True, YESIL)
+        yazi = font_buyuk.render(f"BAŞLIYOR...", True, SIYAH)
         cubuk_uzunluk = int((t_pose_sayaci / T_POSE_SURESI) * 200)
         pygame.draw.rect(oyun_ekrani, YESIL, (100, 400, cubuk_uzunluk, 30))
         pygame.draw.rect(oyun_ekrani, SIYAH, (100, 400, 200, 30), 2)
@@ -231,7 +361,7 @@ while True:
             kirmizi_yuzey.set_alpha(50)
             kirmizi_yuzey.fill(KIRMIZI)
             oyun_ekrani.blit(kirmizi_yuzey, (0,0))
-            uyari_metni = font_orta.render("UCAK DUSUYOR!", True, KIRMIZI)
+            uyari_metni = font_orta.render("UÇAK DÜŞÜYOR", True, KIRMIZI)
             uyari_metni2 = font_buyuk.render(f"{kalan_saniye}", True, KIRMIZI)
             uyari_metni3 = font_kucuk.render("KOLLARI KALDIR!", True, SIYAH)
             oyun_ekrani.blit(uyari_metni, (EKRAN_GENISLIK//2 - uyari_metni.get_width()//2, 150))
@@ -254,9 +384,8 @@ while True:
             
             if ucak_rect.inflate(-20, -15).colliderect(kus):
                 oyun_durumu = "BITTI"
-                bitis_sebebi = "CARPISMA!"
-                if skor > en_yuksek_skor:
-                    en_yuksek_skor = skor
+                bitis_sebebi = "ÇARPIŞMA!"
+                rekor_kaydet(skor) # REKORU KAYDET
             
             if kus.y > EKRAN_YUKSEKLIK:
                 kus_listesi.remove(kus)
@@ -266,31 +395,64 @@ while True:
         oyun_ekrani.blit(skor_yazi, (10, 10))
 
     elif oyun_durumu == "BITTI":
-        yazi1 = font_buyuk.render("OYUN BITTI!", True, KIRMIZI)
-        sebep_yazi = font_orta.render(bitis_sebebi, True, SIYAH)
-        en_iyi_yazi = font_orta.render(f"En Iyi Skor: {en_yuksek_skor}", True, YESIL)
-        yazi2 = font_orta.render(f"Skor: {skor}", True, SIYAH)
-        oyun_ekrani.blit(yazi1, (EKRAN_GENISLIK//2 - yazi1.get_width()//2, 150))
-        oyun_ekrani.blit(sebep_yazi, (EKRAN_GENISLIK//2 - sebep_yazi.get_width()//2, 210))
-        oyun_ekrani.blit(en_iyi_yazi, (EKRAN_GENISLIK//2 - en_iyi_yazi.get_width()//2, 270))
-        oyun_ekrani.blit(yazi2, (EKRAN_GENISLIK//2 - yazi2.get_width()//2, 320))
+        siyah_filtre = pygame.Surface((EKRAN_GENISLIK, EKRAN_YUKSEKLIK))
+        siyah_filtre.set_alpha(150) 
+        siyah_filtre.fill(SIYAH)
+        oyun_ekrani.blit(siyah_filtre, (0,0))
+
+        panel_genislik = 320
+        panel_yukseklik = 400
+        panel_x = EKRAN_GENISLIK // 2 - panel_genislik // 2
+        panel_y = EKRAN_YUKSEKLIK // 2 - 200
+
+        pygame.draw.rect(oyun_ekrani, (40, 40, 40), (panel_x, panel_y, panel_genislik, panel_yukseklik), border_radius=20)
+        pygame.draw.rect(oyun_ekrani, BEYAZ, (panel_x, panel_y, panel_genislik, panel_yukseklik), 3, border_radius=20)
+
+        baslik = font_buyuk.render("OYUN BİTTİ", True, KIRMIZI)
+        oyun_ekrani.blit(baslik, (panel_x + (panel_genislik - baslik.get_width())//2, panel_y + 30))
+
+        sebep = font_orta.render(bitis_sebebi, True, BEYAZ)
+        oyun_ekrani.blit(sebep, (panel_x + (panel_genislik - sebep.get_width())//2, panel_y + 80))
+
+        pygame.draw.line(oyun_ekrani, BEYAZ, (panel_x + 40, panel_y + 120), (panel_x + panel_genislik - 40, panel_y + 120), 2)
+
+        skor_baslik = font_kucuk.render("TOPLAM SKOR", True, (200, 200, 200)) 
+        skor_deger = font_buyuk.render(str(skor), True, YESIL)
+        
+        oyun_ekrani.blit(skor_baslik, (panel_x + (panel_genislik - skor_baslik.get_width())//2, panel_y + 140))
+        oyun_ekrani.blit(skor_deger, (panel_x + (panel_genislik - skor_deger.get_width())//2, panel_y + 170))
+
+        rekor_metni = font_kucuk.render(f"En Yüksek Skor: {en_yuksek_skor}", True, TURUNCU)
+        oyun_ekrani.blit(rekor_metni, (panel_x + (panel_genislik - rekor_metni.get_width())//2, panel_y + 220))
+
         mouse_pos = pygame.mouse.get_pos() 
         click = pygame.mouse.get_pressed() 
-        buton_rect = pygame.Rect(EKRAN_GENISLIK//2 - 100, 400, 200, 60)
+        
+        btn_w, btn_h = 200, 50
+        btn_x = panel_x + (panel_genislik - btn_w) // 2
+        btn_y = panel_y + 300
+        
+        buton_rect = pygame.Rect(btn_x, btn_y, btn_w, btn_h)
+        
         if buton_rect.collidepoint(mouse_pos):
-            pygame.draw.rect(oyun_ekrani, (0, 200, 0), buton_rect) 
+            pygame.draw.rect(oyun_ekrani, (0, 200, 0), buton_rect, border_radius=10) 
             if click[0] == 1: 
                 oyun_durumu = "BEKLEME"
                 kus_listesi = []
                 ucak_x = EKRAN_GENISLIK // 2 - 35 
                 dusuk_kol_sayaci = 0
-                arkaplan_y = 0 # Arka planı da sıfırla
+                arkaplan_y = 0 
         else:
-            pygame.draw.rect(oyun_ekrani, YESIL, buton_rect) 
-        buton_yazi = font_orta.render("TEKRAR OYNA", True, BEYAZ)
-        yazi_x = buton_rect.x + (buton_rect.width - buton_yazi.get_width()) // 2
-        yazi_y = buton_rect.y + (buton_rect.height - buton_yazi.get_height()) // 2
-        oyun_ekrani.blit(buton_yazi, (yazi_x, yazi_y))
+            pygame.draw.rect(oyun_ekrani, YESIL, buton_rect, border_radius=10) 
+            
+        btn_yazi = font_orta.render("TEKRAR OYNA", True, BEYAZ)
+        yazi_x = btn_x + (btn_w - btn_yazi.get_width()) // 2
+        yazi_y = btn_y + (btn_h - btn_yazi.get_height()) // 2
+        oyun_ekrani.blit(btn_yazi, (yazi_x, yazi_y))
+        
+        kisayol = font_kucuk.render("veya 'R' tuşuna bas", True, (150, 150, 150))
+        oyun_ekrani.blit(kisayol, (panel_x + (panel_genislik - kisayol.get_width())//2, btn_y + 60))
+
         keys = pygame.key.get_pressed()
         if keys[pygame.K_r]:
             oyun_durumu = "BEKLEME"
